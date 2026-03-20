@@ -1,0 +1,40 @@
+# ── Build stage ───────────────────────────────────────────────────────────────
+FROM python:3.12-slim AS builder
+
+WORKDIR /app
+
+# Install deps into a virtualenv so they're easy to copy
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# ── Runtime stage ─────────────────────────────────────────────────────────────
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+
+# Copy virtualenv from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy application code
+COPY . .
+
+# Non-root user for security
+RUN adduser --disabled-password --gecos "" appuser && chown -R appuser /app
+USER appuser
+
+EXPOSE 8000
+
+# Production-grade uvicorn startup:
+#   --workers 2          Two async workers (tune to CPU cores * 2 + 1 in production)
+#   --no-access-log      Structured logging handled by the app itself
+#   --no-server-header   Don't advertise server software version
+CMD ["uvicorn", "app.main:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--workers", "2", \
+     "--no-access-log", \
+     "--no-server-header"]
